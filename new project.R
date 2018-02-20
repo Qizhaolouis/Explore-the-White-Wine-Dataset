@@ -31,16 +31,18 @@ table <- data.frame(summary) %>%
 ########Histgrams
 # Draw plot
 histgrams=list()
+linecolor[12]
 histcolor=c("BuPu","GnBu","Greens","Oranges","OrRd","PuBu","PuBuGn","PuRd","RdPu","YlGn","YlGnBu","YlOrRd")
 linecolor=c("blue","green","green2","orange","red","purple","skyblue","red","purple4","yellow","green","red")
-for (i in 1:ncol(wine)){
-  histgrams[[names[i]]] <- figure(title = names[i], width = 600, height = 400) %>%
+for (i in 1:12){
+  histgrams[[names[i]]] <- figure(title = names[i], width = 250, height = 250) %>%
             ly_hist(wine[,i], data = wine, 
-                    color= brewer.pal(10,histcolor[i]), 
+                    color = brewer.pal(10, histcolor[i]), 
                     breaks = 40, freq = FALSE) %>%
-            ly_density(wine[,i], data = wine,
-                       color= linecolor[i])
+            ly_density(wine[,i], data = wine,color = linecolor[i]
+                       )
 }
+grid_plot(histgrams,nrow=3)
 #####observe
 histgrams$fixed.acidity
 histgrams$volatile.acidity
@@ -66,6 +68,8 @@ lapply(subwine, length) %>%
   data.frame(name=names[1:11],count=.) %>% 
   ggtexttable(rows = NULL, 
               theme = ttheme("mBlue")) %>% print
+
+
 ######
 ol<- as.list(wine1) %>% 
   lapply(outlier) %>% 
@@ -78,18 +82,20 @@ outindex <- outliers %>% unlist %>%
   as.numeric %>% .[!duplicated(.)] 
 olpoints <- wine[outindex,]
 olpoints
+
+
 ###new hist
 subhist=list()
 for (i in 1:12){
   points=unlist(subwine[1]) %>% as.numeric %>% c(.)
-  subhist[[names[i]]] <- figure(title = names[i], width = 600, height = 400) %>%
+  subhist[[names[i]]] <- figure(title = names[i], width = 250, height = 250) %>%
     ly_hist(points,  
             color = brewer.pal(10,histcolor[i]), 
             breaks = 40, freq = FALSE) %>%
     ly_density(points,
                color= linecolor[i])
 }
-subhist$chlorides
+grid_plot(subhist,nrow=3)
 
 #### What is the structure of your dataset?
 #### What is/are the main feature(s) of interest in your dataset? 
@@ -106,14 +112,11 @@ wine_new <- wine[-outindex,]
 
 
 
-
-
-
 ###Bivariate Plots Section
 
 ##cor plot
 library(ggcorrplot)
-corr <- round(cor(wine_new), 1)
+corr <- round(cor(wine_new), 2)
 ggcorrplot(corr, hc.order = TRUE, 
            type = "lower", 
            lab = TRUE, 
@@ -136,7 +139,6 @@ figs <- lapply(idx, function(x) {
   figure(width = 250, height = 250, title = names(idx)) %>%
     ly_points(x, y, data = wine_new,
               hover = list(free.sulfur.dioxide, total.sulfur.dioxide))})
-  
 grid_plot(figs,nrow=3)
 
 
@@ -151,8 +153,12 @@ grid_plot(figs,nrow=3)
 #### pairs
 wine$level <- as.factor(wine$quality)
 library(GGally)
-pair<-ggpairs(data=wine, # data.frame with variables
+pair<-ggpairs(data=wine_new, # data.frame with variables
              columns=1:4, # columns to plot, default to all.
              title="White Wine", # title of the plot
-             ggplot2::aes(colour=level),legend=c(1,1)) # aesthetics, ggplot2 style
+             ggplot2::aes(colour=level,alpha=0.4),legend=c(1,1)) # aesthetics, ggplot2 style
 print(pair)
+
+
+#####bivariate analysis
+#####multivariate analysis
