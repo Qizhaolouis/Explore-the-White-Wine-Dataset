@@ -1,0 +1,207 @@
+---
+title: "White Wine Dataset Analysis"
+author: "Qi Zhao"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+    self_contained: no
+runtime: shiny
+---
+```{r echo=FALSE,cache=TRUE,message=FALSE}
+library(RColorBrewer)
+library(data.table)
+library(gridExtra)
+library(grid)
+library(ggpubr)
+library(dplyr)
+wine <- read.csv("wineQualityWhites.csv", row.names = 1)
+names <- colnames(wine)
+histcolor=c("BuPu","GnBu","Greens","Oranges","OrRd","PuBu","PuBuGn","PuRd","RdPu","YlGn","YlGnBu","YlOrRd")
+linecolor=c("powderblue","olivedrab","skyblue","plum","tomato","purple","slateblue", "red","khaki","yellow","green","greenyellow")
+```
+
+# 1. Univariate Plots Section
+
+Let's look at the shape of the white wine dataset.
+```{r}
+dim(wine)
+```
+The white wine dataset contain 12 variables and 4898 observations. In this section, we are going to analyze the variables of the data. What's their distribution? Do we need to apply transformation to make the data look "normal"?
+
+### Statistics
+First of all, I draw a table which summarise the 12 variables' minimum, mean, median, maximum and variance, which gives us a basic idea of the data.
+```{r echo=FALSE,cache=TRUE,message=FALSE}
+stats <- c("min","median","mean","max","var")
+summary <- list(variable = names)
+for (i in 1:length(stats)){
+  summary[[stats[i]]] <- apply(wine, 2, eval(stats[i])) %>% round(.,2)
+}
+```
+
+```{r }
+table <- data.frame(summary) %>% 
+         ggtexttable(rows = NULL, 
+                     theme = ttheme("mGreen")) %>% print
+```
+
+### Histgrams
+
+Next, let's look at the histgrams of the variables. Below are the 12 histgram plots of 12 variables.
+
+```{r echo=FALSE,cache=TRUE,warning=FALSE,message=FALSE}
+########Histgrams
+# Draw plot
+library(rbokeh)
+histgrams=list()
+for (i in 1:12){
+  histgrams[[names[i]]] <- figure(title= NULL, xlab = names[i], width = 400, height = 250) %>%
+            ly_hist(wine[,i], data = wine, 
+                    color = brewer.pal(10, histcolor[i]), 
+                    breaks = 40, freq = FALSE) %>%
+            ly_density(wine[,i], data = wine,color = linecolor[i]
+                       )
+}
+```
+
+```{r fig.align='center',warning=FALSE}
+grid_plot(histgrams, nrow=6)
+```
+
+
+
+
+From the plot, we can see that there are some long-tailed data. However, before we want to do some fancy transformation, we might want to perform the outlier test first.
+
+## Outlier Detect
+
+First let's see the frequency of the different qualities. We observed that there are only 5 cases out of 4898 row that scored 9.
+```{r  echo=FALSE,results="asis"}
+library(knitr)
+kable(table(wine$quality))
+```
+
+Since we want to learn about all the qualities of the white wine from 3 to 9, we do not want those 5 cases to be seen as outliers because of their high grade. Thus we should exclude the quality variable when eliminating the outliers.
+```{r echo=FALSE,cache=TRUE,message=FALSE}
+####outliers (except quality)
+library(outliers)
+wine1 <- wine[,-12]
+subwine <- as.list(wine1) %>% 
+  lapply(rm.outlier)
+
+######
+ol<- as.list(wine1) %>% 
+  lapply(outlier) %>% 
+  lapply(as.numeric)
+outliers <- list()
+for (i in 1:11){
+  outliers[[names[i]]] <- list(which(wine1[,i]==ol[i]))
+}
+```
+
+
+```{r echo=FALSE}
+outindex <- outliers %>% unlist %>% 
+  as.numeric %>% .[!duplicated(.)] 
+olpoints <- wine[outindex,]
+nrow(olpoints) %>% print
+
+```
+
+As we can see, there are only total 9 ouliers detected in this dataset. In fact there are many methods in outlier proccessing, like using the maximum value of the variable. However, since the number of outliers is quite small compared to the total  observations, I decide to simply delete the outliers.
+```{r}
+wine <- wine[-outindex,]
+```
+
+### New Histgrams
+
+Now we can observe the new histgrams after the outliers are eliminated. Below is a histgram where you can customize by choosing the variable, the color and the breaks.
+
+```{r echo=FALSE}
+library(shiny)
+inputPanel(
+  selectInput("variable", label = "Choose the Variable",
+              choices = as.vector(names), selected = names[1]),
+  selectInput("color", label = "Histgram Color",
+              choices =histcolor, selected = histcolor[1]),
+  selectInput("lcolor", label = "Line Color",
+              choices =linecolor, selected = linecolor[1]),
+  selectInput("y", label = "Frequency",
+              choices =c("TRUE","FALSE"), selected = "FALSE"),
+  sliderInput("breaks", label = "The Breaks",
+              min = 10, max = 150, value = 40, step = 5)
+)
+
+renderRbokeh({
+  figure(xlab = input$variable, width = 600, height = 400) %>%
+            ly_hist(wine[[input$variable]], data = wine, 
+                    color = brewer.pal(10, input$color), 
+                    breaks =input$breaks, freq = eval(parse(text=input$y))) %>%
+            ly_density(wine[[input$variable]], data = wine,color = input$lcolor
+                       )
+  
+  })
+```
+
+# Univariate Analysis Section
+
+# Bivariate Plots Section
+### Mean in each group
+```{r echo=FALSE}
+wine <- data.table(wine)
+mean <- aggregate(wine[,1:11], list(as.factor(wine$quality)), mean)
+print(mean)
+```
+
+### Correlation Plot
+```{r echo=FALSE}
+##cor plot
+library(ggcorrplot)
+corr <- round(cor(wine), 2)
+ggcorrplot(corr, hc.order = TRUE, 
+           type = "lower", 
+           lab = TRUE, 
+           lab_col = "chocolate4",
+           outline.color = "chocolate",
+           colors = c("royalblue4", "white", "steelblue4"),
+           lab_size = 3, 
+           method="square", 
+           show.legend = TRUE, legend.title = "correlation", 
+           title="Correlarion Plot", 
+           ggtheme=theme_bw)
+
+```
+
+### Scatter Plot
+
+```{r echo=FALSE}
+library(shiny)
+inputPanel(
+  selectInput("v1", label = "Choose the Variable",
+              choices = as.vector(names[1:11]), selected = names[1]),
+  selectInput("v2", label = "Choose another Variable",
+              choices = as.vector(names[1:11]), selected = names[2]),
+  selectInput("quality1", label = "cHoose quality:",
+              choices = c("3","4","5","6","7","8","9","all"), selected = "all"),
+  selectInput("quality2", label = "cHoose quality:",
+              choices = c("3","4","5","6","7","8","9"), selected = "1")
+
+)
+
+renderRbokeh({
+  wine1 <- wine
+  wine1$quality <- as.factor(wine1$quality)
+  if(input$quality1 != "all"){
+    idx2 <- which(wine1$quality==input$quality1)
+    idx1 <- which(wine1$quality==input$quality2)
+    wine1 <- wine1[c(idx1,idx2),]
+  }
+  figure(xlab = input$v1, ylab= input$v2, width = 600, height = 400) %>%
+            ly_points(x = wine1[[input$v1]], 
+                      y = wine1[[input$v2]],
+                      data = wine1, 
+                      color = wine1$quality)
+})
+```
+
