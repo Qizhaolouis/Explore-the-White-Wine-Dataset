@@ -1,89 +1,94 @@
 ---
-title: "White Wine Dataset Analysis"
+title: "Exploratory Data Analysis with White Wine Dataset"
 author: "Qi Zhao"
 date: "`r Sys.Date()`"
 output:
   prettydoc::html_pretty:
-    theme: cayman
+    theme: architect
     highlight: github
-    self_contained: no
-runtime: shiny
 ---
-```{r echo=FALSE,cache=TRUE,message=FALSE}
-library(RColorBrewer)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,warning=FALSE,message=FALSE,cache=TRUE)
+```
+
+The report performs the exploratory data analysis on the white wine dataset which records the variables of the Portuguese "Vinho Verde" wine. We are provided with some objective tests results(e.g. PH values) and the quality of the white wine, graded by the experts. What we are interested in is the factors that influence the taste of the wine. There is no missing data in this dataset which makes it easier for us to explore.
+
+```{r packageload}
+library(prettydoc)
 library(data.table)
 library(gridExtra)
 library(grid)
 library(ggpubr)
-library(dplyr)
+library(tidyverse)
+library(knitr)
+library(rbokeh)
 wine <- read.csv("wineQualityWhites.csv", row.names = 1)
 names <- colnames(wine)
-histcolor=c("BuPu","GnBu","Greens","Oranges","OrRd","PuBu","PuBuGn","PuRd","RdPu","YlGn","YlGnBu","YlOrRd")
-linecolor=c("powderblue","olivedrab","skyblue","plum","tomato","purple","slateblue", "red","khaki","yellow","green","greenyellow")
 ```
 
 # 1. Univariate Plots Section
 
-Let's look at the shape of the white wine dataset.
-```{r}
+First of all, let's look at the shape of the white wine dataset.
+```{r dimension}
 dim(wine)
 ```
-The white wine dataset contain 12 variables and 4898 observations. In this section, we are going to analyze the variables of the data. What's their distribution? Do we need to apply transformation to make the data look "normal"?
+The white wine dataset contain 12 variables and 4898 observations. The 12 variables are: `r names`. 
 
-### Statistics
-First of all, I draw a table which summarise the 12 variables' minimum, mean, median, maximum and variance, which gives us a basic idea of the data.
-```{r echo=FALSE,cache=TRUE,message=FALSE}
-stats <- c("min","median","mean","max","var")
-summary <- list(variable = names)
-for (i in 1:length(stats)){
-  summary[[stats[i]]] <- apply(wine, 2, eval(stats[i])) %>% round(.,2)
+In this section, we are going to use univariate plots to analyze the data. What's their distribution? Do we need to apply transformation to make the data look more "normal"? Before all that, let's take a look at the variables' meaning and some basic statistics.
+
+The first thing we need to understand is that the quality(our response variable) is scored between between 0 (very bad) and 10 (very excellent).
+
+The table below shows the minimum, mean, median, maximum and variance of all variables, which gives us a basic idea of the data. 
+```{r summary}
+Qisummary <- function(x){
+  c(minimum=min(x),
+  median=median(x),
+  mean=mean(x),
+  maximum=max(x),
+  variance=var(x))
 }
+stats <- apply(wine,2,Qisummary) %>% t(.)
+kable(stats)
 ```
 
-```{r }
-table <- data.frame(summary) %>% 
-         ggtexttable(rows = NULL, 
-                     theme = ttheme("mGreen")) %>% print
-```
-
-### Histgrams
-
-Next, let's look at the histgrams of the variables. Below are the 12 histgram plots of 12 variables.
-
-```{r echo=FALSE,cache=TRUE,warning=FALSE,message=FALSE}
-########Histgrams
-# Draw plot
-library(rbokeh)
-histgrams=list()
-for (i in 1:12){
-  histgrams[[names[i]]] <- figure(title= NULL, xlab = names[i], width = 400, height = 250) %>%
-            ly_hist(wine[,i], data = wine, 
-                    color = brewer.pal(10, histcolor[i]), 
-                    breaks = 40, freq = FALSE) %>%
-            ly_density(wine[,i], data = wine,color = linecolor[i]
-                       )
-}
-```
-
-```{r fig.align='center',warning=FALSE}
-grid_plot(histgrams, nrow=6)
+From the variables, I noticed that there are "free sulfur dioxide" and "total sulfur dioxide" which are obviously correlated since the free sulfur dioxide is a part(probably a big part) of the total sulfur dioxide. Therefore, I create a new variable called "nonfree.sulfur.dioxide" which equals the difference of total and free sulfur dioxide.
+```{r echo=TRUE}
+wine$total.sulfur.dioxide <- wine$total.sulfur.dioxide - wine$free.sulfur.dioxide
+colnames(wine)[7] <- "nonfree.sulfur.dioxide"
+names <- colnames(wine)
 ```
 
 
+## 1.1 Box Plots
+First of all, let's look at the boxplots.
+```{r cache=FALSE}
+library(magrittr)
+boxplots <- apply(wine, 2,
+  function(x){figure(title= NULL, xlab = colnames(x),ylab=NULL) %>%
+            ly_boxplot(x,breaks = 40,outlier_size = 3,color="skyblue",alpha=0.9, freq = FALSE)})
 
+grid_plot(boxplots, nrow=2)
+```
 
-From the plot, we can see that there are some long-tailed data. However, before we want to do some fancy transformation, we might want to perform the outlier test first.
+* As we can see, most qualities are in 5,6 and 7 and there is no data in 1,2 and 10. 
+```{r}
+table(wine$quality)
+```
 
-## Outlier Detect
+* Fixed Acidity, Volatile Acidity, Critic Acid, Chlorides, Free Sulfur Dioxide, pH and Sulphates have many outliers. Besides, most outliers are greater than the majority.
+
+* The residual sugar is obviously not normal distributed even after the outlier removal.
+
+## 1.2 Outlier Detection
 
 First let's see the frequency of the different qualities. We observed that there are only 5 cases out of 4898 row that scored 9.
 ```{r  echo=FALSE,results="asis"}
-library(knitr)
 kable(table(wine$quality))
 ```
 
 Since we want to learn about all the qualities of the white wine from 3 to 9, we do not want those 5 cases to be seen as outliers because of their high grade. Thus we should exclude the quality variable when eliminating the outliers.
-```{r echo=FALSE,cache=TRUE,message=FALSE}
+```{r}
 ####outliers (except quality)
 library(outliers)
 wine1 <- wine[,-12]
@@ -101,70 +106,88 @@ for (i in 1:11){
 ```
 
 
-```{r echo=FALSE}
+```{r }
 outindex <- outliers %>% unlist %>% 
   as.numeric %>% .[!duplicated(.)] 
 olpoints <- wine[outindex,]
 nrow(olpoints) %>% print
-
 ```
 
 As we can see, there are only total 9 ouliers detected in this dataset. In fact there are many methods in outlier proccessing, like using the maximum value of the variable. However, since the number of outliers is quite small compared to the total  observations, I decide to simply delete the outliers.
-```{r}
+
+```{r echo=TRUE}
 wine <- wine[-outindex,]
 ```
 
-### New Histgrams
+## 1.3 Histgrams
 
-Now we can observe the new histgrams after the outliers are eliminated. Below is a histgram where you can customize by choosing the variable, the color and the breaks.
+Now we have removed all the outliers and we can observe the histgrams. Below are the 12 histgram plots of 12 variables.
 
-```{r echo=FALSE}
-library(shiny)
-inputPanel(
-  selectInput("variable", label = "Choose the Variable",
-              choices = as.vector(names), selected = names[1]),
-  selectInput("color", label = "Histgram Color",
-              choices =histcolor, selected = histcolor[1]),
-  selectInput("lcolor", label = "Line Color",
-              choices =linecolor, selected = linecolor[1]),
-  selectInput("y", label = "Frequency",
-              choices =c("TRUE","FALSE"), selected = "FALSE"),
-  sliderInput("breaks", label = "The Breaks",
-              min = 10, max = 150, value = 40, step = 5)
-)
+```{r fig.align='center',cache=FALSE}
+histgrams <- apply(wine, 2,
+  function(x){figure(title= NULL, xlab = colnames(x), width = 400, height = 250) %>%
+            ly_hist(x,breaks = 40, freq = FALSE) %>%
+            ly_density(x)})
 
-renderRbokeh({
-  figure(xlab = input$variable, width = 600, height = 400) %>%
-            ly_hist(wine[[input$variable]], data = wine, 
-                    color = brewer.pal(10, input$color), 
-                    breaks =input$breaks, freq = eval(parse(text=input$y))) %>%
-            ly_density(wine[[input$variable]], data = wine,color = input$lcolor
-                       )
-  
-  })
+grid_plot(histgrams, nrow=6)
 ```
 
-# Univariate Analysis Section
-
-# Bivariate Plots Section
-### Mean in each group
-```{r echo=FALSE}
-wine <- data.table(wine)
-mean <- aggregate(wine[,1:11], list(as.factor(wine$quality)), mean)
-print(mean)
+Still, as we have seen before, the residual sugar needs to be transformed because it is heavily right-skewed.
+Thus, I decide to perform the log transformation on this variable.
+```{r fig.align='center',cache=FALSE}
+ggplot(wine,aes(x=residual.sugar))+
+  geom_histogram(binwidth = 0.05,col="white",fill="skyblue")+
+  scale_x_continuous(trans='log') 
 ```
 
-### Correlation Plot
-```{r echo=FALSE}
+From the plot, we can see clearly that this is a Bimodal Distribution with 2 peaks, which is a mixture of data from 2 normal distributions.  
+
+# 2.Univariate Analysis Section
+
+* I created a new variable called "nonfree.sulfur.dioxide" due to the obvious dependency between "free.sulfur.dioxide" and "total.sulfur.dioxide"
+
+* The most important variable is our target variable: the quality of the wine. There are totally 7 qualities that has appeared in this dataset: 3,4,5,6,7,8 and 9. About 92.5% data falls in 5,6,7. 
+
+* Many data are right-skewed. I performed a log-transformation on the "residual.sugar" variable.
+
+* Right now, there's no clear information about the importance of each variables except the quality.
+
+
+# 3.Bivariate Plots Section
+
+In this section, we are going to explore the relations between each variable. Especially the difference between each qualities.
+
+## 3.1 Mean in Each Group
+
+First of all, let's look at the mean of each variable within each group.
+
+```{r mean}
+group.mean <- wine %>% group_by(quality) %>%
+  summarise_all(funs(mean)) %>% 
+  t %>% round(2)  
+kable(group.mean)
+```
+
+What I immediately noticed is that the mean values of alchohol, free.sulfur.dioxide and nonfree.sulfer.dioxide have a tendency of increase as the quality becomes better. Besides, the mean values of the density in different groups are always all the same.(we can also find this from the histgrams and boxplot sections) 
+
+However, in most cases, the extreme value may lead to a extremely great result or a very bad one. For example, the mean value of fixed acidity is gradually decrease from quality 3 to quality 8. However, in quality 9, it suddenly changed to a very high value.
+
+That means for most values, it's not simply "the more the better" or "the less the better". 
+
+## 3.2 Correlation Plot
+
+Below is a Pearson correlation Plot of all 12 variables. The darker square means there are stronger correlation between two variables.
+
+```{r fig.align='center',cache=FALSE}
 ##cor plot
 library(ggcorrplot)
-corr <- round(cor(wine), 2)
+corr <- round(cor(wine,method = "pearson"), 2)
 ggcorrplot(corr, hc.order = TRUE, 
            type = "lower", 
            lab = TRUE, 
-           lab_col = "chocolate4",
-           outline.color = "chocolate",
-           colors = c("royalblue4", "white", "steelblue4"),
+           lab_col = "black",
+           outline.color = "white",
+           colors = c("skyblue",  "white","skyblue"),
            lab_size = 3, 
            method="square", 
            show.legend = TRUE, legend.title = "correlation", 
@@ -173,35 +196,151 @@ ggcorrplot(corr, hc.order = TRUE,
 
 ```
 
-### Scatter Plot
+From the plot we can see some strong correlation pairs.
 
-```{r echo=FALSE}
-library(shiny)
-inputPanel(
-  selectInput("v1", label = "Choose the Variable",
-              choices = as.vector(names[1:11]), selected = names[1]),
-  selectInput("v2", label = "Choose another Variable",
-              choices = as.vector(names[1:11]), selected = names[2]),
-  selectInput("quality1", label = "cHoose quality:",
-              choices = c("3","4","5","6","7","8","9","all"), selected = "all"),
-  selectInput("quality2", label = "cHoose quality:",
-              choices = c("3","4","5","6","7","8","9"), selected = "1")
+* Density has a strong correlation with almost every variable, which is counterintuitive since its value seems to be almost all the same. This is probality because I rounded the mean to 2 digits.
 
-)
+* Fixed.acidity has a strong positive correlation with citric.acid and a strong negative correlation with pH.
 
-renderRbokeh({
-  wine1 <- wine
-  wine1$quality <- as.factor(wine1$quality)
-  if(input$quality1 != "all"){
-    idx2 <- which(wine1$quality==input$quality1)
-    idx1 <- which(wine1$quality==input$quality2)
-    wine1 <- wine1[c(idx1,idx2),]
-  }
-  figure(xlab = input$v1, ylab= input$v2, width = 600, height = 400) %>%
-            ly_points(x = wine1[[input$v1]], 
-                      y = wine1[[input$v2]],
-                      data = wine1, 
-                      color = wine1$quality)
-})
+* Alcohol has the strongest positive with quality and a strong negative correlation with density. 
+
+
+## 3.3 Scatter Plot
+First, let's look at some of the interesting scatter plots. The different colors represent different qualities.
+```{r cache=FALSE}
+x <- c("residual.sugar","alcohol","fixed.acidity","fixed.acidity")
+y <- c("density","density","citric.acid","pH")
+q <- wine[["quality"]] %>% as.factor
+scatterplots <- list()
+for (i in 1:4){
+      scatterplots[[i]] <- figure(xlab = x[i], ylab= y[i]) %>%
+            ly_points(x = wine[[x[i]]], 
+                      y = wine[[y[i]]],
+                      data = wine, 
+                      color = q)}
+
+grid_plot(scatterplots, nrow=3)
 ```
 
+# 4. Bivariate Analysis
+
+From the scatter plots, just like what the correlation matrix has suggested, we've found some linear relations between selected variables. Thus we do a regression analysis between them.
+
+```{r echo=TRUE}
+model <- list()
+for (i in 1:4){model[[i]] <- lm(wine[[y[i]]] ~ wine[[x[i]]])}
+```
+
+## 4.1
+
+In the first plot, we can see clearly that the amount of sugar remaining after fermentation stops has a strong relation with the density. What's more, it seems that we can find two straight lines to separate the three different color of quality 5,6 and 7. It seems that the lower density and higher residual sugar can lead to better quality.(We will have to explore this separation in next section.)
+
+Based on the $R^2$ the residual.sugar can explain 70% variance in density.
+
+```{r echo=TRUE}
+summary(model[[1]])
+```
+
+## 4.2
+
+From the second plot, we see that there is a clear negative correlation between alcohol and density. This matches our intuition.
+
+Admittedly, in most cases we cannot assume the cause and result between variables. However, as we all know, the density of the alcohol is smaller than the density of water. Thus, the increasing percent alcohol content of the wine can definately lead to a lower density. 
+
+```{r echo=TRUE}
+summary(model[[2]])
+```
+
+## 4.3
+
+From the plot, it seems that there may be a positive correlation between fixed acidity and citric acid. The linear regression model does confirm my guess. With a P-value that is almost 0, there are definately some positive relation between these two variables.
+
+```{r echo=TRUE}
+summary(model[[3]])
+```
+
+## 4.4
+
+There is a clearly negative correlation between fixed acidity and the pH value.
+
+```{r echo=TRUE}
+summary(model[[4]])
+```
+
+# 5.Multivariate Plots Section
+
+From last section we have observed that residual sugar, alcohol, density and pH may have strong effect on the taste of the wine. Now let's take a deep look at it.
+```{r}
+color=c("powderblue","olivedrab","skyblue","plum","tomato","purple","slateblue")
+```
+
+
+```{r cache=FALSE}
+ggplot(data=wine, aes(x=as.factor(quality),y=residual.sugar)) +
+  geom_boxplot(fill=color,alpha=0.5) +
+  stat_summary(fun.y=mean,geom="point")
+```
+
+```{r cache=FALSE}
+ggplot(data=wine, aes(x=as.factor(quality),y=alcohol)) +
+  geom_boxplot(fill=color,alpha=0.5) +
+  stat_summary(fun.y=mean,geom="point")
+```
+
+```{r cache=FALSE}
+ggplot(data=wine, aes(x=as.factor(quality),y=density)) +
+  geom_boxplot(fill=color,alpha=0.5) +
+  stat_summary(fun.y=mean,geom="point") 
+```
+
+# 6.Multivariate Analysis
+
+From the 3 plots above, we can see that there are relationships between them and the quality. So we can build a linear regression model to predict the quality of the wine.
+
+```{r echo=TRUE}
+model.new <- lm(quality~alcohol+density+ residual.sugar, data=wine)
+summary(model.new)
+```
+Unfortunately, this is not a very satisfying result, the $R^2$ is only 0.2 meaning only 20% of the variance of the quality can be explained by the 3 variables.
+
+# 7.Final Plots & Summary
+
+There are three final plots that I have chosen which can show the most interesting things that I have found.
+
+## 7.1 First Plot
+```{r fig.align='center',cache=FALSE}
+ggplot(wine,aes(x=residual.sugar))+
+  geom_histogram(binwidth = 0.05,col="white",fill="skyblue")+
+  scale_x_continuous(trans='log') 
+```
+
+The distribution of the log transformation of residual sugar turns out to be bimodal. From later analysis we find out that the mean residual sugar of the best and worst quality are relatively low and the those in the middle tend to have higher residual sugar. This indicates that the sweeter taste of white wine may be a "safe card".
+
+## 7.2 Second Plot
+```{r}
+figure(xlab = "residual.sugar", ylab="density",data=wine) %>%
+            ly_points(x =residual.sugar, 
+                      y = density,
+                      data = wine, 
+                      color = q)
+```
+
+The second plot is the scatter plot of the density against residual.sugar. Within the majority group(5,6 and 7), we see that the wine with better quality usally have higher alcohol content and lower density. 
+
+## 7.3 Third Plot
+
+```{r cache=FALSE}
+ggplot(data=wine, aes(x=as.factor(quality),y=alcohol)) +
+  geom_boxplot(fill=color,alpha=0.5) +
+  stat_summary(fun.y=mean,geom="point")
+```
+
+The third plot is the boxplot of the alcohol within each group. Apparently  the quality of the white wine improved significantly as the alcohol content becomes higher.
+
+## 8. Reflection
+
+In this report, I first explored each variable individually. Then I tried to capture the relationships between the variables. In the end, I try to find the factors that have the most influence on the wine quality.
+
+Besides, I also have made an interactive presentation file using R shiny for readers to explore the distribution of each variables and the correlation between varibles by themselves. Here's the link: https://louischoki.shinyapps.io/QiPresen/#1.
+
+In the multivariate section, I originally wanted to plot the heatmap. However, because there are only 4000 data and they are not very concentrated, the heatmap looks very sparse and is hard for me to find any interesting information.
