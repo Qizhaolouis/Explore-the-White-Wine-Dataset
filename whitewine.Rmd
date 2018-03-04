@@ -17,12 +17,15 @@ The report performs the exploratory data analysis on the white wine dataset whic
 ```{r packageload}
 library(prettydoc)
 library(data.table)
+library(RColorBrewer)
 library(gridExtra)
 library(grid)
 library(ggpubr)
 library(tidyverse)
 library(knitr)
 library(rbokeh)
+library(ggplot2)
+library(latex2exp)
 wine <- read.csv("wineQualityWhites.csv", row.names = 1)
 names <- colnames(wine)
 ```
@@ -33,7 +36,7 @@ First of all, let's look at the shape of the white wine dataset.
 ```{r dimension}
 dim(wine)
 ```
-The white wine dataset contain 12 variables and 4898 observations. The 12 variables are: `r names`. 
+The white wine dataset contain `r ncol(wine)` variables and `r nrow(wine)` observations. The 12 variables are: `r names`. 
 
 In this section, we are going to use univariate plots to analyze the data. What's their distribution? Do we need to apply transformation to make the data look more "normal"? Before all that, let's take a look at the variables' meaning and some basic statistics.
 
@@ -63,20 +66,22 @@ names <- colnames(wine)
 ## 1.1 Box Plots
 First of all, let's look at the boxplots.
 ```{r cache=FALSE}
-library(magrittr)
 boxplots <- apply(wine, 2,
-  function(x){figure(title= NULL, xlab = colnames(x),ylab=NULL) %>%
-            ly_boxplot(x,breaks = 40,outlier_size = 3,color="skyblue",alpha=0.9, freq = FALSE)})
+  function(x){figure(title= NULL, 
+                     xlab = colnames(x),ylab=NULL) %>%
+            ly_boxplot(x,breaks = 40,
+                       color="skyblue3",alpha=0.9, 
+                       freq = FALSE)})
 
 grid_plot(boxplots, nrow=2)
 ```
 
-* As we can see, most qualities are in 5,6 and 7 and there is no data in 1,2 and 10. 
 ```{r}
 table(wine$quality)
 ```
+* As we can see, most qualities are in 5,6 and 7 and there is no data in 1,2 and 10.
 
-* Fixed Acidity, Volatile Acidity, Critic Acid, Chlorides, Free Sulfur Dioxide, pH and Sulphates have many outliers. Besides, most outliers are greater than the majority.
+* Fixed Acidity, Volatile Acidity, Critic Acid, Chlorides, Free Sulfur Dioxide, Nonfree sulfur dioxide, pH and Sulphates have many outliers. Besides, most outliers are greater than the majority.
 
 * The residual sugar is obviously not normal distributed even after the outlier removal.
 
@@ -84,40 +89,58 @@ table(wine$quality)
 
 First let's see the frequency of the different qualities. We observed that there are only 5 cases out of 4898 row that scored 9.
 ```{r  echo=FALSE,results="asis"}
-kable(table(wine$quality))
+tbl <- table(wine$quality) %>% as.data.frame() %>% t()
+table <- rbind(quality=as.numeric(tbl[1,]),
+               frequency=as.numeric(tbl[2,])) 
+kable(table)
 ```
 
-Since we want to learn about all the qualities of the white wine from 3 to 9, we do not want those 5 cases to be seen as outliers because of their high grade. Thus we should exclude the quality variable when eliminating the outliers.
+
+Therefore, we should not consider the "quality" variable in our ourlier analysis since obviously a "quality 9" wine would be considered an outlier. Besides, although there are many outliers, we don't want to remove too many points for the following reasons:
+
+* The "outliers" may not actually be an outlier and may be associated with the rarer qualities. Considering there are only 5 observations that have quality 9, and they may have some features that are very different from "normal" classes like 5,6 or 7. Therefore, by removing too many outliers we are actually removing the whole class. We want to remove an outlier because it contains huge random error which makes it hard to see the truly useful information not simply because it is too different from others.
+
+* There are only less than 5000 observations and if we remove the 2% outliers for all 12 variables, we may end up removing 22% of the data in the worst case. 
+
+Therefore I choose to observe the outliers of volatile acidity, residual sugars, free sulfur dioxide, chlorides.
+
+```{r}
+grid.arrange(ggplot(wine, aes( x = 1, y = volatile.acidity ) ) + 
+               geom_jitter(alpha = 0.1,color="lightsteelblue4") +
+               geom_boxplot(alpha = 0.2,color="navyblue"),
+             ggplot(wine, aes( x = 1, y = residual.sugar ) ) + 
+               geom_jitter(alpha = 0.1,color="lightsteelblue4") +
+               geom_boxplot(alpha = 0.2, color="navyblue"),
+             ggplot(wine, aes( x = 1, y = free.sulfur.dioxide ) ) + 
+               geom_jitter(alpha = 0.1,color="lightsteelblue4") +
+               geom_boxplot(alpha = 0.2, color="navyblue"),
+             ggplot(wine, aes( x = 1, y = chlorides ) ) + 
+               geom_jitter(alpha = 0.1,color="lightsteelblue4") +
+               geom_boxplot(alpha = 0.2, color="navyblue"),
+             ncol=2)
+```
+
+After looking at this, I realized that there are many decide to remove the upper 1% and the lower 0.5% of the data because more outliers have greater values than the majority.
+
 ```{r}
 ####outliers (except quality)
-library(outliers)
-wine1 <- wine[,-12]
-subwine <- as.list(wine1) %>% 
-  lapply(rm.outlier)
+outlierbound <- apply(wine[c("volatile.acidity","residual.sugar",
+                       "free.sulfur.dioxide","chlorides")],2,
+               function(x)quantile(x, probs=c(.01, .99))) %>% as.data.frame()
+kable(outlierbound)
 
-######
-ol<- as.list(wine1) %>% 
-  lapply(outlier) %>% 
-  lapply(as.numeric)
-outliers <- list()
-for (i in 1:11){
-  outliers[[names[i]]] <- list(which(wine1[,i]==ol[i]))
-}
 ```
 
+Next, we remove all the outliers.
 
-```{r }
-outindex <- outliers %>% unlist %>% 
-  as.numeric %>% .[!duplicated(.)] 
-olpoints <- wine[outindex,]
-nrow(olpoints) %>% print
+```{r}
+wine <- wine %>% filter(volatile.acidity>outlierbound[1,1] & volatile.acidity<outlierbound[2,1]) %>% 
+                 filter(residual.sugar>outlierbound[1,2] & residual.sugar<outlierbound[2,2]) %>% 
+                 filter(free.sulfur.dioxide>outlierbound[1,3] & free.sulfur.dioxide<outlierbound[2,3]) %>% 
+                 filter(chlorides>outlierbound[1,4] & chlorides<outlierbound[2,4])
 ```
 
-As we can see, there are only total 9 ouliers detected in this dataset. In fact there are many methods in outlier proccessing, like using the maximum value of the variable. However, since the number of outliers is quite small compared to the total  observations, I decide to simply delete the outliers.
-
-```{r echo=TRUE}
-wine <- wine[-outindex,]
-```
+Now, there are `r nrow(wine)` left, which is acceptable.
 
 ## 1.3 Histgrams
 
@@ -125,9 +148,12 @@ Now we have removed all the outliers and we can observe the histgrams. Below are
 
 ```{r fig.align='center',cache=FALSE}
 histgrams <- apply(wine, 2,
-  function(x){figure(title= NULL, xlab = colnames(x), width = 400, height = 250) %>%
-            ly_hist(x,breaks = 40, freq = FALSE) %>%
-            ly_density(x)})
+                   function(x){
+                       figure(title= NULL, xlab = colnames(x), 
+                              width = 400, height = 250) %>%
+                       ly_hist(x,breaks = 40, freq = FALSE, 
+                               color=brewer.pal(9, "GnBu")) %>%
+                       ly_density(x)})
 
 grid_plot(histgrams, nrow=6)
 ```
@@ -135,9 +161,12 @@ grid_plot(histgrams, nrow=6)
 Still, as we have seen before, the residual sugar needs to be transformed because it is heavily right-skewed.
 Thus, I decide to perform the log transformation on this variable.
 ```{r fig.align='center',cache=FALSE}
-ggplot(wine,aes(x=residual.sugar))+
-  geom_histogram(binwidth = 0.05,col="white",fill="skyblue")+
-  scale_x_continuous(trans='log') 
+sugar.log <- wine$residual.sugar %>% log
+figure(title= "Log transform of residual sugar", 
+       xlab = "residual sugar") %>%
+  ly_hist(sugar.log,breaks = 40, freq = FALSE, 
+          color=brewer.pal(9, "PuRd")) %>%
+  ly_density(sugar.log)
 ```
 
 From the plot, we can see clearly that this is a Bimodal Distribution with 2 peaks, which is a mixture of data from 2 normal distributions.  
@@ -205,28 +234,46 @@ From the plot we can see some strong correlation pairs.
 * Alcohol has the strongest positive with quality and a strong negative correlation with density. 
 
 
-## 3.3 Scatter Plot
-First, let's look at some of the interesting scatter plots. The different colors represent different qualities.
-```{r cache=FALSE}
-x <- c("residual.sugar","alcohol","fixed.acidity","fixed.acidity")
-y <- c("density","density","citric.acid","pH")
-q <- wine[["quality"]] %>% as.factor
-scatterplots <- list()
-for (i in 1:4){
-      scatterplots[[i]] <- figure(xlab = x[i], ylab= y[i]) %>%
-            ly_points(x = wine[[x[i]]], 
-                      y = wine[[y[i]]],
-                      data = wine, 
-                      color = q)}
-
-grid_plot(scatterplots, nrow=3)
+## 3.3 Box Plots
+From last section we have observed that residual sugar, alcohol, density and pH may have strong effect on the taste of the wine. Now let's take a deep look at it.
+```{r}
+color=c("#f1eef6","#d0d1e6","#a6bddb","#74a9cf","#3690c0","#0570b0","#034e7b")
 ```
+
+
+```{r cache=FALSE}
+bp1 <- ggplot(data=wine, aes(x=as.factor(quality),y=volatile.acidity)) +
+  geom_boxplot(fill=color,alpha=0.5) +
+  stat_summary(fun.y=mean,geom="point")+
+  labs(x="quality")
+
+bp2 <- ggplot(data=wine, aes(x=as.factor(quality),y=alcohol)) +
+  geom_boxplot(fill=color,alpha=0.5) +
+  stat_summary(fun.y=mean,geom="point")+
+  labs(x="quality")
+
+bp3 <- ggplot(data=wine, aes(x=as.factor(quality),y=density)) +
+  geom_boxplot(fill=color,alpha=0.5) +
+  stat_summary(fun.y=mean,geom="point")+
+  labs(x="quality")
+
+bp4 <- ggplot(data=wine, aes(x=as.factor(quality),y=nonfree.sulfur.dioxide)) +
+  geom_boxplot(fill=color,alpha=0.5) +
+  stat_summary(fun.y=mean,geom="point")+
+  labs(x="quality")
+
+grid.arrange(bp1,bp2,bp3,bp4, nrow=2)
+```
+
+
 
 # 4. Bivariate Analysis
 
-From the scatter plots, just like what the correlation matrix has suggested, we've found some linear relations between selected variables. Thus we do a regression analysis between them.
+From the correlation plot and the boxplots, we've found some strong relations between selected variables. Thus we do a regression analysis between them.
 
 ```{r echo=TRUE}
+x <- c("residual.sugar","alcohol","fixed.acidity","fixed.acidity")
+y <- c("density","density","citric.acid","pH")
 model <- list()
 for (i in 1:4){model[[i]] <- lm(wine[[y[i]]] ~ wine[[x[i]]])}
 ```
@@ -269,29 +316,50 @@ summary(model[[4]])
 
 # 5.Multivariate Plots Section
 
-From last section we have observed that residual sugar, alcohol, density and pH may have strong effect on the taste of the wine. Now let's take a deep look at it.
-```{r}
-color=c("powderblue","olivedrab","skyblue","plum","tomato","purple","slateblue")
-```
+
+First, let's look at some of the interesting scatter plots. The different colors represent different qualities.
+```{r fig.align="center"}
 
 
-```{r cache=FALSE}
-ggplot(data=wine, aes(x=as.factor(quality),y=residual.sugar)) +
-  geom_boxplot(fill=color,alpha=0.5) +
-  stat_summary(fun.y=mean,geom="point")
+sp1 <- ggplot(data=wine,aes(x = wine[[x[1]]],
+                           y = wine[[y[1]]], 
+                           color = factor(quality))) +
+                       geom_point(alpha = 0.8, size = 1) +
+                       geom_smooth(method = "lm", 
+                                   se = FALSE,size=1)  +
+                       scale_color_brewer(type='seq',palette = 'Blues',
+                                          guide=guide_legend(title='Quality'))+
+                       labs(x=x[1],y=y[1])
+sp2 <- ggplot(data=wine,aes(x = wine[[x[2]]],
+                                          y = wine[[y[2]]], 
+                                          color = factor(quality))) +
+                       geom_point(alpha = 0.8, size = 1) +
+                       geom_smooth(method = "lm", 
+                                   se = FALSE,size=1)  +
+                       scale_color_brewer(type='seq',palette = 'GnBu',
+                                          guide=guide_legend(title='Quality'))+
+                       labs(x=x[2],y=y[2])
+sp3 <- ggplot(data=wine,aes(x = wine[[x[3]]],
+                          y = wine[[y[3]]], 
+                          color = factor(quality))) +
+                        geom_point(alpha = 0.8, size = 1) +
+                        geom_smooth(method = "lm", 
+                        se = FALSE,size=1)  +
+                      scale_color_brewer(type='seq',palette = 'GnBu',
+                       guide=guide_legend(title='Quality'))+
+                      labs(x=x[3],y=y[3])
+sp4 <- ggplot(data=wine,aes(x = wine[[x[4]]],
+                          y = wine[[y[4]]], 
+                          color = factor(quality))) +
+              geom_point(alpha = 0.8, size = 1) +
+              geom_smooth(method = "lm", 
+               se = FALSE,size=1)  +
+              scale_color_brewer(type='seq',palette = 'Blues',
+                     guide=guide_legend(title='Quality'))+
+              labs(x=x[4],y=y[4])
+grid.arrange(sp1,sp2,sp3,sp4, nrow=2)
 ```
 
-```{r cache=FALSE}
-ggplot(data=wine, aes(x=as.factor(quality),y=alcohol)) +
-  geom_boxplot(fill=color,alpha=0.5) +
-  stat_summary(fun.y=mean,geom="point")
-```
-
-```{r cache=FALSE}
-ggplot(data=wine, aes(x=as.factor(quality),y=density)) +
-  geom_boxplot(fill=color,alpha=0.5) +
-  stat_summary(fun.y=mean,geom="point") 
-```
 
 # 6.Multivariate Analysis
 
@@ -309,38 +377,53 @@ There are three final plots that I have chosen which can show the most interesti
 
 ## 7.1 First Plot
 ```{r fig.align='center',cache=FALSE}
-ggplot(wine,aes(x=residual.sugar))+
-  geom_histogram(binwidth = 0.05,col="white",fill="skyblue")+
-  scale_x_continuous(trans='log') 
+sugar.log <- wine$residual.sugar %>% log
+figure(title= "Distribution of Log Transform of residual sugar", 
+       xlab =TeX('Log Transform of Residual Sugar g/$dm^3$')) %>%
+  ly_hist(sugar.log,breaks = 40, freq = FALSE, 
+          color=brewer.pal(9, "PuBu")) %>%
+  ly_density(sugar.log)
 ```
 
 The distribution of the log transformation of residual sugar turns out to be bimodal. From later analysis we find out that the mean residual sugar of the best and worst quality are relatively low and the those in the middle tend to have higher residual sugar. This indicates that the sweeter taste of white wine may be a "safe card".
 
 ## 7.2 Second Plot
-```{r}
-figure(xlab = "residual.sugar", ylab="density",data=wine) %>%
-            ly_points(x =residual.sugar, 
-                      y = density,
-                      data = wine, 
-                      color = q)
+```{r fig.align='center',cache=FALSE}
+ggplot(data=wine, xlab="Quality", ylab="Alcohol [%]",
+       aes(x=factor(quality),y=alcohol,fill=factor(quality))) +
+  geom_boxplot(color="white",alpha=0.9) +
+  labs(data=wine,x="quality",y="Alcohol [%]") + 
+  scale_fill_manual(values=color,
+                    name="Quality")
 ```
 
-The second plot is the scatter plot of the density against residual.sugar. Within the majority group(5,6 and 7), we see that the wine with better quality usally have higher alcohol content and lower density. 
+The second plot is the boxplot of the alcohol within each group. Apparently  the quality of the white wine improved significantly as the alcohol content becomes higher.
 
 ## 7.3 Third Plot
+```{r fig.align='center',cache=FALSE}
 
-```{r cache=FALSE}
-ggplot(data=wine, aes(x=as.factor(quality),y=alcohol)) +
-  geom_boxplot(fill=color,alpha=0.5) +
-  stat_summary(fun.y=mean,geom="point")
+ggplot(data=wine,aes(x = wine[,1],
+                  y = wine[,2], 
+                  color = factor(quality))) +
+  geom_point(alpha = 0.8, size = 1) +
+  geom_smooth(method = "lm", 
+              se = FALSE,size=1)  +
+  scale_color_brewer(type='seq',palette = 'Blues',
+                     guide=guide_legend(title='Quality'))+
+  xlab(TeX('Residual Sugar g/$dm^3$'))+
+  ylab(TeX('Density g/$cm^3$'))+ggtitle("Scatter Plot",)
 ```
 
-The third plot is the boxplot of the alcohol within each group. Apparently  the quality of the white wine improved significantly as the alcohol content becomes higher.
+The third plot is the scatter plot of the density against residual.sugar. Within the majority group(5,6 and 7), we see that the wine with better quality usally have higher alcohol content and lower density. 
 
 ## 8. Reflection
 
 In this report, I first explored each variable individually. Then I tried to capture the relationships between the variables. In the end, I try to find the factors that have the most influence on the wine quality.
 
-Besides, I also have made an interactive presentation file using R shiny for readers to explore the distribution of each variables and the correlation between varibles by themselves. Here's the link: https://louischoki.shinyapps.io/QiPresen/#1.
+From my final plot 3, we can see that there is a clear linear relationship between density and the residual sugar. What's more important, we can see clearly that with higher residual sugar and lower density, the quality of the wine tends to increase. (I mainly ovbserve wines with quality 5,6,7 and 8, since there are not enough observations for wine with quality 3,4 and 9.)
+
+Although it seems to be a classification problem, I believe it would be more appropriate to perform regression analysis on this dataset because the quality of the wine is actually nomial scale. However, the model may be a little bit more complicated than multivariate linear regression model. Therefore, I  plan to use some generilized linear models to further explore the relationships between the 11 features and the taste of the wine.
+
+Besides, I also have made an interactive presentation file using R shiny for readers to explore the distribution of each variables and the correlation between varibles by themselves. Here's the [link]:https://louischoki.shinyapps.io/QiPresen/#1.
 
 In the multivariate section, I originally wanted to plot the heatmap. However, because there are only 4000 data and they are not very concentrated, the heatmap looks very sparse and is hard for me to find any interesting information.
