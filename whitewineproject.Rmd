@@ -329,7 +329,9 @@ sp1 <- ggplot(data=wine,aes(x = wine[[x[1]]],
                                    se = FALSE,size=1)  +
                        scale_color_brewer(type='seq',palette = 'Blues',
                                           guide=guide_legend(title='Quality'))+
-                       labs(x=x[1],y=y[1])
+                       labs(x=x[1],y=y[1])+
+                       theme_dark()
+  
 sp2 <- ggplot(data=wine,aes(x = wine[[x[2]]],
                                           y = wine[[y[2]]], 
                                           color = factor(quality))) +
@@ -338,7 +340,8 @@ sp2 <- ggplot(data=wine,aes(x = wine[[x[2]]],
                                    se = FALSE,size=1)  +
                        scale_color_brewer(type='seq',palette = 'GnBu',
                                           guide=guide_legend(title='Quality'))+
-                       labs(x=x[2],y=y[2])
+                       labs(x=x[2],y=y[2])+
+                       theme_dark()
 sp3 <- ggplot(data=wine,aes(x = wine[[x[3]]],
                           y = wine[[y[3]]], 
                           color = factor(quality))) +
@@ -347,7 +350,8 @@ sp3 <- ggplot(data=wine,aes(x = wine[[x[3]]],
                         se = FALSE,size=1)  +
                       scale_color_brewer(type='seq',palette = 'GnBu',
                        guide=guide_legend(title='Quality'))+
-                      labs(x=x[3],y=y[3])
+                      labs(x=x[3],y=y[3])+
+                       theme_dark()
 sp4 <- ggplot(data=wine,aes(x = wine[[x[4]]],
                           y = wine[[y[4]]], 
                           color = factor(quality))) +
@@ -356,7 +360,8 @@ sp4 <- ggplot(data=wine,aes(x = wine[[x[4]]],
                se = FALSE,size=1)  +
               scale_color_brewer(type='seq',palette = 'Blues',
                      guide=guide_legend(title='Quality'))+
-              labs(x=x[4],y=y[4])
+              labs(x=x[4],y=y[4])+
+                       theme_dark()
 grid.arrange(sp1,sp2,sp3,sp4, nrow=2)
 ```
 
@@ -377,12 +382,13 @@ There are three final plots that I have chosen which can show the most interesti
 
 ## 7.1 First Plot
 ```{r fig.align='center',cache=FALSE}
-sugar.log <- wine$residual.sugar %>% log
-figure(title= "Log transform of residual sugar", 
-       xlab = "residual sugar") %>%
-  ly_hist(sugar.log,breaks = 40, freq = FALSE, 
-          color=brewer.pal(9, "GnBu")) %>%
-  ly_density(sugar.log)
+
+ggplot(data=wine,aes(x=log(residual.sugar)))+
+  geom_histogram(fill="skyblue",color="white",alpha=0.9,binwidth = 0.05) +
+  labs(x=TeX('Residual Sugar g/$dm^3$')) +
+  ggtitle( "Log transform of residual sugar") +
+  theme(plot.title = element_text(hjust = 0.5))+theme_dark()
+
 ```
 
 The distribution of the log transformation of residual sugar turns out to be bimodal. From later analysis we find out that the mean residual sugar of the best and worst quality are relatively low and the those in the middle tend to have higher residual sugar. This indicates that the sweeter taste of white wine may be a "safe card".
@@ -392,9 +398,11 @@ The distribution of the log transformation of residual sugar turns out to be bim
 ggplot(data=wine, xlab="Quality", ylab="Alcohol [%]",
        aes(x=factor(quality),y=alcohol,fill=factor(quality))) +
   geom_boxplot(color="white",alpha=0.9) +
-  labs(data=wine,x="quality",y="Alcohol [%]") + 
+  labs(x="quality",y="Alcohol [%]") + 
   scale_fill_manual(values=color,
-                    name="Quality")
+                    name="Quality") +
+  ggtitle("Boxplot of Alcohol Concentration in Different Qualities") +
+  theme(plot.title = element_text(hjust = 0.5))+theme_dark()
 ```
 
 The second plot is the boxplot of the alcohol within each group. Apparently  the quality of the white wine improved significantly as the alcohol content becomes higher.
@@ -411,7 +419,8 @@ ggplot(data=wine,aes(x = wine[,1],
   scale_color_brewer(type='seq',palette = 'Blues',
                      guide=guide_legend(title='Quality'))+
   xlab(TeX('Residual Sugar g/$dm^3$'))+
-  ylab(TeX('Density g/$cm^3$'))+ggtitle("Scatter Plot",)
+  ylab(TeX('Density g/$cm^3$'))+ggtitle("Scatter Plot of Residual Sugar and Density")+theme(plot.title = element_text(hjust = 0.5))+
+  theme_dark()
 ```
 
 The third plot is the scatter plot of the density against residual.sugar. Within the majority group(5,6 and 7), we see that the wine with better quality usally have higher alcohol content and lower density. 
