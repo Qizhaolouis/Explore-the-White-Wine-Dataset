@@ -2,14 +2,7 @@
 You can also read the file in :
 http://rpubs.com/louischoki/white-wine-analysis
 
----
-title: "Exploratory Data Analysis with White Wine Dataset"
-author: "Qi Zhao"
-date: "`r Sys.Date()`"
-output:
-  prettydoc::html_pretty:
-    theme: architect
-    highlight: github
+
 ---
 
 ```{r setup, include=FALSE}
